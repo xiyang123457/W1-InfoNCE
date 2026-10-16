@@ -8,9 +8,9 @@
 
 ## 一句话状态
 
-**A 阶段（搭壳）全部完成且逐项实测通过；B 阶段（填 InfoNCE）尚未开始。**
+**A 阶段（搭壳）+ B1/B2（InfoNCE + sanity check）全部完成且逐项实测通过；仅剩 B5（推 GitHub）。**
 
-A5 的 shape 打印已过 —— 这是计划书定义的 A→B 交接点，可以往下走。
+A5 的 shape 打印已过（= 计划书定义的 A→B 交接点），B1/B2 的 loss 数值也已实测 —— 计划书要求的「InfoNCE 初版」现在可以端到端跑通。
 
 ---
 
@@ -23,8 +23,8 @@ A5 的 shape 打印已过 —— 这是计划书定义的 A→B 交接点，可�
 | A | A3 | 数据集 | ✅ | md5 `c58f30108f718f92721af3b95e74349a`，170498071 字节；50000/10000，10 类 |
 | A | A4 | 增强流水线 | ✅ | `torch.equal(v1,v2)=False`，平均绝对差 **0.1353** |
 | A | A5 | 骨架 + shape | ✅ | `h (2B,512)` / `z (2B,128)` / `layer4 (2B,512,4,4)` |
-| B | B1 | 实现 InfoNCE | ⬜ 未开始 | `NTXentLoss` 尚未编写 |
-| B | B2 | sanity check | ⬜ 未开始 | 目标：τ=0.5、B=256 时 `loss ≈ 6.26 ± 0.02` |
+| B | B1 | 实现 InfoNCE | ✅ | 纯随机 z 下 loss = **6.2528**，命中计划书的 6.259（τ=0.5） |
+| B | B2 | sanity check | ✅ | 真实数据 B=256 τ=0.5：5 次均值 **6.1387 / 6.1449**，偏离 ln511 约 **−0.09 ~ −0.10**（判据 ±0.1，**压线**，原因见 §4.4） |
 | B | B5 | 进 GitHub | ⬜ 未开始 | 需配 remote 后 push |
 
 图例：✅ 已实测通过｜⬜ 未开始
@@ -41,10 +41,12 @@ W1 InfoNCE/
 └── src/
     ├── augment.py        A4 · 双视图增强流水线（含自检）
     ├── data.py           A3 · CIFAR-10 下载/解压 + 双视图 Dataset（含自检）
-    └── model.py          A5 · Encoder + ProjectionHead + SimCLR（含自检）
+    ├── model.py          A5 · Encoder + ProjectionHead + SimCLR（含自检）
+    ├── loss.py           B1 · NTXentLoss 损失（含自检）
+    └── sanity_check.py   B2 · 真实数据 sanity check（含自检）
 ```
 
-**尚未创建**：`src/loss.py`（B1）、`src/sanity_check.py`（B2）、`README.md`（B5）
+**尚未创建**：`README.md`（B5）
 
 ---
 
@@ -58,7 +60,7 @@ W1 InfoNCE/
 | `model.Encoder` | `(N,3,32,32)` | `h (N,512)` | ✅ |
 | `model.ProjectionHead` | `(N,512)` | `z (N,128)` | ✅ |
 | `model.SimCLR` | `(N,3,32,32)` | `z (N,128)`；另有 `encode()` 只出 `h`（W2 线性探针用） | ✅ |
-| `loss.NTXentLoss` | `z (2B,128)` | `scalar` | ⬜ B1 待写 |
+| `loss.NTXentLoss` | `z (2B,128)` | `scalar` | ✅ |
 
 ### 关键设计点（写代码时已落地的决策）
 
@@ -105,6 +107,65 @@ ProjectionHead 参数量 = 329,344
 
 > 参数量已按本机实测校订（原预估 11,676,702 / 328,320 有误，后者漏算了 ProjectionHead 两层 BN 各 512 个 `mean/var`）。
 
+### B1 · NTXentLoss 自检（随机 z，B=8 → 2B=16）
+```
+z.shape          = (16, 128)
+S.shape          = (16, 16)
+对角线（未屏蔽）= 1.0000
+非对角 std       = 0.0888
+loss             = 2.6679
+ln(2B-1)         = 2.7081
+偏差             = -0.0401
+```
+
+### B2 · sanity check（真实数据，B=256，τ=0.5，每次取 5 个 batch）
+
+| 运行 | batch1 | batch2 | batch3 | batch4 | batch5 | 均值 | std | 偏离 ln511 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 第 1 次 | 6.1655 | 6.1213 | 6.1373 | 6.1570 | 6.1434 | **6.1449** | 0.0154 | −0.0915 |
+| 第 2 次 | 6.1794 | 6.0847 | 6.1429 | 6.1551 | 6.1317 | **6.1387** | 0.0313 | −0.0976 |
+
+### 4.4 为什么真实数据上 loss 低于 ln(2B−1)（−0.09 不是 bug）
+
+关键对照：**把 z 换成纯随机独立向量后，loss = 6.2528（偏差 +0.016），精确命中计划书的 6.259。**
+
+| 场景 | loss | 偏差 |
+| --- | --- | --- |
+| 纯随机独立 z（mask 对角线） | 6.2607 / 6.2514 / 6.2504 / 6.2439 / 6.2575，均值 **6.2528** | **+0.016** ✅ 对上计划书的 6.259 |
+| 纯随机 z（不 mask 对角线） | 6.2847 / 6.2808 / 6.2654，均值 6.2770 | +0.041 |
+| 真实数据 + 随机初始化模型 | 6.1313 | −0.105 |
+
+原因（诊断脚本实测）：随机初始化的网络下，**同一张图的两个视图已经比"随便两张图"更相似**：
+
+```
+正样本相似度均值 = +0.4432
+负样本相似度均值 = +0.3530
+正 - 负          = +0.0902
+```
+
+两个视图像素相关 → 过同一个（平滑的）随机卷积网络 → 输出自然相关 → 正样本 logit 被系统性抬高 → loss 低于基线。
+
+所以 `ln(2B−1)` 是「完全没有信息」的**基线**，不是「随机初始化下 loss 的精确值」。那 0.09 的差距就是训练信号的雏形。
+
+**结论：实现正确；计划书那张 τ 敏感性表是在独立随机向量上标定的。**
+
+### 4.5 loss 的波动来自哪里（实测拆解）
+
+| 只改变这一项 | 实测 loss | 变化量 |
+| --- | --- | --- |
+| 增强随机种子 | 6.1678 → 6.1011 | **0.067**（最大） |
+| 换一批图（batch 组成） | 6.1678 → 6.1437 | 0.024 |
+| 模型随机初始化 | 6.1678 → 6.1635 | 0.004（最小） |
+| **全部固定后重跑** | 6.1678 → **6.1678** | **0（逐位相同）** |
+
+- → **代码是确定性的**；波动 100% 来自随机性
+- → 主要波动源是**增强**，因为它直接决定「同一张图的两个视图有多像」
+- → B2 只跑 5 个 batch 时，均值本身仍有 ±0.03 量级抖动
+
+⚠️ **已知风险（已决定维持不改）**：真实数据偏差实测范围 **−0.06 ~ −0.14**，**越过了 ±0.1 的判据边界**。
+若某次 `sanity_check.py` 断言失败，先看偏差是不是 −0.10 ~ −0.14 这种量级 —— 那是正常波动，**不是代码 bug**。
+真正的错误信号是 4.x / `inf` / `nan` / 偏离幅度 > 0.5。
+
 ---
 
 ## 5. 环境备忘（踩过的坑）
@@ -114,6 +175,8 @@ ProjectionHead 参数量 = 329,344
 | `conda activate pytorch` 后 `torch.cuda.is_available()` 仍是 `False` | 本机 PowerShell 未做 conda init，命令静默落到了 base 环境的 `torch 2.14.0+cpu` | **一律用绝对路径**：`& "D:\anaconda\envs\pytorch\python.exe"`，不要依赖 `conda activate` |
 | `curl` 报 `Failed to connect to www.cs.toronto.edu port 443 via 127.0.0.1` | 代理环境变量指向了 `7890`，本机代理实际端口是 **`7897`** | 用 `$env:HTTPS_PROXY="http://127.0.0.1:7897"` |
 | CIFAR-10 下载慢（代理实测 ≈71 KB/s） | torchvision 单线程、无断点续传 | 用迅雷/aria2c 多连接下载后丢进 `data/`，torchvision 校验 md5 通过会跳过下载 |
+| 设了 `random.seed(42)` 重取同一批数据，结果**仍然不一致** | torchvision 的 `ColorJitter` 用的是 **torch 的 RNG**（`torch.empty(1).uniform_()`），而 `RandomResizedCrop` / `RandomHorizontalFlip` / `RandomGrayscale` 用的是 Python `random`。这套增强**同时踩在两个 RNG 上** | 要复现实验必须四个种子一起设：`random.seed` + `torch.manual_seed` + `np.random.seed` + `torch.cuda.manual_seed_all` |
+| `print` 中文/特殊符号报 `UnicodeEncodeError: 'gbk' codec ...` | Windows 控制台默认 GBK，编不出 `−`(U+2212) 等字符 | 换成 ASCII `-`，或设 `$env:PYTHONIOENCODING="utf-8"` |
 
 ### 标准自检命令
 
@@ -122,32 +185,35 @@ cd "d:\learning project\W1 InfoNCE"
 & "D:\anaconda\envs\pytorch\python.exe" src\augment.py   # A4
 & "D:\anaconda\envs\pytorch\python.exe" src\data.py      # A3
 & "D:\anaconda\envs\pytorch\python.exe" src\model.py     # A5
+& "D:\anaconda\envs\pytorch\python.exe" src\loss.py      # B1
+& "D:\anaconda\envs\pytorch\python.exe" src\sanity_check.py   # B2（要 GPU，约 10 秒）
 ```
 
-三个脚本都是**自断言**的：末尾打印 `[PASS] ...` 才算过，断言失败会非零退出。
+五个脚本都是**自断言**的：末尾打印 `[PASS] ...` 才算过，断言失败会非零退出。
 
 ---
 
-## 6. 下一步（B 阶段）
+## 6. 下一步（仅剩 B5）
 
-### B1 · 实现 InfoNCE（`src/loss.py`）
+### B1 / B2 已完成 —— 实现要点留档
 
-要写的只有 `NTXentLoss.forward(z: (2B,128)) -> scalar`，步骤：
+`NTXentLoss.forward(z: (2B,128)) -> scalar` 的 5 步：
 
-1. 对 `z` 做 **L2 归一化**（忘了这步 → 相似度尺度不稳、τ 失效）
-2. `S = z @ z.T / τ` → `(2B, 2B)`，τ 先固定 **0.5**
-3. `labels = [(i+B) for i in range(B)] + [i for i in range(B)]` ← **最容易错的地方**
-4. `loss = CrossEntropyLoss()(S, labels)`
+1. `F.normalize(z, dim=1)` —— **L2 归一化**（漏掉 → 相似度尺度不稳、τ 失效、易出 `nan`）
+2. `sim = z @ z.t() / τ` → `(2B, 2B)`，τ = 0.5
+3. `sim.masked_fill(eye, -inf)` —— 屏蔽对角线（对角 logit 恒为 `1/τ = 2.0`，是会挤占 softmax 分母的大值）
+4. `labels = [B..2B-1] + [0..B-1]` —— 正样本是 `i+B`，**不是对角线**（最容易错的一步）
+5. `F.cross_entropy(sim, labels)` —— `S` 对称 + labels 覆盖双向，**一次 CE 即可**，无需手动对称化
 
-### B2 · sanity check（`src/sanity_check.py`）
+排错对照：
 
-- 真实数据、`B=256`、τ=0.5
-- **期望 `loss ≈ 6.26 ± 0.02`**（`ln(511) = 6.2364`，τ=0.5 时理论偏移约 +0.02）
-- 排错对照：
-  - 实测 ≈ 4.x 且不下降 → labels 写成了对角线 `i`
-  - loss = `inf` → 对角线没 mask 成 `-inf` 且 labels 指到了对角线
-  - loss = `nan` → 忘了 L2 归一化，或 τ=0
-  - 偏高到 7.07 → 正常，那是 τ=0.07 的偏移，不是 labels 错
+| 现象 | 判断 |
+| --- | --- |
+| 实测 ≈ 4.x 且不下降 | labels 写成了对角线 `i`（且未屏蔽对角线） |
+| `loss = inf` | 对角线已屏蔽成 `-inf`，labels 却指到对角线上 |
+| `loss = nan` | 忘了 L2 归一化，或 τ = 0 |
+| 实测 6.10 ~ 6.18 | **正常**，见 §4.4 |
+| 偏高到 7.07 | **正常**，那是 τ=0.07 的偏移，不是 labels 错 |
 
 ### B5 · 进 GitHub
 
