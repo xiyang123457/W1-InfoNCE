@@ -1,0 +1,24 @@
+# ==== 数据 ====
+# CIFAR-10 解压后 170MB+，提交上去这个仓库就废了 —— 必须忽略
+data/
+runs/
+*.pth
+*.pt
+*.ckpt
+
+# ==== Python ====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# ==== 虚拟环境 ====
+.venv/
+venv/
+env/
+
+# ==== 编辑器 / 系统 ====
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

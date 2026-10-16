@@ -1,0 +1,17 @@
+# W1 · InfoNCE 最小可复现环境
+#
+# 说明：本文件的作用是【记录环境】（方便复现），不是用来重建环境。
+#       当前 D:\anaconda\envs\pytorch 已装齐全部依赖，一个包都不用装。
+#
+# ⚠️ 带 +cu130 的本地版本号不能直接 `pip install -r requirements.txt` 从 PyPI 装，
+#    需要额外指定索引：
+#    pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu130
+#
+# 实测环境（2026-10-16，python D:\anaconda\envs\pytorch\python.exe）：
+#   torch 2.9.0+cu130 / torchvision 0.24.0+cu130 / CUDA 13.0
+#   显卡 NVIDIA GeForce RTX 5060 Laptop GPU（arch_list 含 sm_120，Blackwell 原生支持）
+torch==2.9.0+cu130
+torchvision==0.24.0+cu130
+numpy==2.2.6
+matplotlib==3.10.9
+tqdm==4.70.1
