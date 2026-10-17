@@ -16,14 +16,37 @@
 | 训练 15 epoch | loss | **6.1753 → 4.7429** |
 | 表征质量 | 正/负样本对余弦距离的 gap | **0.0902 → 0.8192**（约 9 倍） |
 
-产物图（`runs/`，已被 `.gitignore` 忽略）：
+### 训练曲线
 
-| 文件 | 内容 |
-| --- | --- |
-| `W2_curve_tau0.5_loss.png` | 训练曲线（step 轴，含随机初始化起点与两条基线） |
-| `W2_tsne_1_random_init.png` | 随机初始化时的 t-SNE —— 十色均匀散开，无结构 |
-| `W2_tsne_2_trained.png` | 训练后的 t-SNE —— truck / automobile / ship+airplane / horse+deer / frog 各自成簇 |
-| `W2_tsne_3_pos_neg_dist.png` | 正/负样本对余弦距离的两条直方图，明显分离 |
+![NT-Xent loss curve](docs/images/W2_curve_tau0.5_loss.png)
+
+> 灰虚线 = 随机初始化实测起点 **6.1753**；黑点线 = 理论基线 `ln(511) = 6.2364`。
+> 细线是每 20 步一个原始记录点，粗线是滑动平均。**曲线从起点一路穿过两条基线向下**，
+> 这是「模型真的在学」的第一层证据。
+
+### t-SNE：随机初始化 vs 训练后
+
+<table>
+<tr>
+<td align="center"><img src="docs/images/W2_tsne_1_random_init.png" width="415"/></td>
+<td align="center"><img src="docs/images/W2_tsne_2_trained.png" width="415"/></td>
+</tr>
+<tr>
+<td align="center"><b>(a) 随机初始化</b><br/>十色均匀散开，无任何结构</td>
+<td align="center"><b>(b) 训练 15 epoch 后</b><br/>truck / automobile / ship+airplane / horse+deer / frog 各自成簇</td>
+</tr>
+</table>
+
+> 2000 张 CIFAR-10 测试图（每类 200），**不带增强**，颜色 = 真实类别；两张图用的是同一批图、同一套配色。
+> 簇不会像监督学习那样干净 —— SimCLR 不知道「类别」这回事，只学「同一张图的两个视图要像」，
+> 所以视觉相似的类（cat/dog、deer/horse、automobile/truck）天然会靠得近，这是正常现象。
+
+### 正/负样本对距离分布
+
+![pos vs neg pair cosine distance](docs/images/W2_tsne_3_pos_neg_dist.png)
+
+> 正样本对平均余弦距离 **0.156**，负样本对 **0.975**，gap **+0.819**。
+> 这张图比 t-SNE 「更硬」—— 它直接量化了「拉近正样本、推远负样本」到底做到没有。
 
 ---
 
@@ -98,8 +121,11 @@ python src/tsne_vis.py
 ```
 .
 ├── README.md
-├── PROGRESS.md            逐阶段进度、实测数字、踩过的所有坑
+├── PROGRESS.md            W1 的逐阶段记录：实测数字、判据、踩过的坑
 ├── requirements.txt
+├── docs/
+│   └── images/            README 内嵌的 4 张结果图
+│                          （runs/ 被 .gitignore 忽略，这里单独留一份以便在 GitHub 上显示）
 └── src/
     ├── augment.py         SimCLR 双视图增强流水线
     ├── data.py            CIFAR-10 下载/解压 + 双视图 Dataset
