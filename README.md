@@ -224,4 +224,13 @@ python src/tsne_vis.py [--ckpt runs/ckpt_tau0.5.pth] [--n-per-class 200] [--perp
 
 - Chen et al., *A Simple Framework for Contrastive Learning of Visual Representations* (SimCLR), ICML 2020
 - Oord et al., *Representation Learning with Contrastive Predictive Coding* (InfoNCE), 2018
-- 逐阶段细节、实测数字与踩坑记录见 [`PROGRESS.md`](PROGRESS.md)
+
+## 文档位置
+
+| 文档 | 内容 |
+| --- | --- |
+| [`PROGRESS.md`](PROGRESS.md) | **W1** 的逐阶段记录：A1–B2 的实测数字、判据、踩过的坑 |
+| 独立仓库 `W2 CLIP demo` 的 `PROGRESS.md` | **W2** 的完整记录：训练日志、t-SNE、CLIP zero-shot demo 及 prompt 消融 |
+
+> 本仓库同时承载 W2-A/B 的代码（`train.py` / `plot_curve.py` / `tsne_vis.py`），
+> 因为它们直接复用这里的 `model.py` / `loss.py` / `data.py`；W2 的**日志与文档**则在独立仓库。
